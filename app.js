@@ -330,4 +330,4 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=2", { updateViaCache: "none" }));
