@@ -8,7 +8,7 @@ const els = {
 
 const state = {
   facingMode: "environment", stream: null, recorder: null, chunks: [], videoMime: "", videoExtension: "webm",
-  locationWatch: null, session: null, recording: false, videoReady: false, timerId: null, latestHeading: null,
+  locationWatch: null, session: null, recording: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
   samples: { orientation: [], motion: [], location: [] }, listenersAdded: false
 };
 
@@ -70,23 +70,34 @@ function onOrientation(event) {
   const screenAngle = window.screen?.orientation?.angle ?? window.orientation ?? 0;
   const appleHeading = Number(event.webkitCompassHeading);
   const alpha = Number(event.alpha);
-  const heading = Number.isFinite(appleHeading) && appleHeading >= 0
-    ? normalizeDegrees(appleHeading)
-    : Number.isFinite(alpha) ? normalizeDegrees(360 - alpha + Number(screenAngle || 0)) : null;
-  const source = Number.isFinite(appleHeading) && appleHeading >= 0
-    ? "webkitCompassHeading" : event.absolute ? "deviceorientationabsolute" : "alpha-derived";
-  const quality = source === "webkitCompassHeading" || event.absolute ? "best-effort-absolute" : "relative-warning";
+  const hasAppleCompass = Number.isFinite(appleHeading) && appleHeading >= 0;
+  const isAbsolute = hasAppleCompass || event.type === "deviceorientationabsolute" || event.absolute === true;
+
+  if (isAbsolute) state.absoluteHeadingSeen = true;
+  if (!isAbsolute && state.absoluteHeadingSeen) return;
+
+  // Android absolute alpha is already world-referenced. Adding the screen angle here
+  // incorrectly makes portrait/landscape starts look like 0° or 90°.
+  const heading = hasAppleCompass ? normalizeDegrees(appleHeading)
+    : isAbsolute && Number.isFinite(alpha) ? normalizeDegrees(360 - alpha) : null;
+  const source = hasAppleCompass ? "webkitCompassHeading"
+    : isAbsolute ? "deviceorientationabsolute" : "deviceorientation-relative";
+  const quality = isAbsolute ? "best-effort-absolute" : "relative-warning";
 
   if (heading !== null) {
     state.latestHeading = { heading, source, quality };
     els.heading.textContent = `${heading.toFixed(1)}°`;
     els.headingMeta.textContent = `${source} · ${quality}`;
-    els.orientation.textContent = source === "alpha-derived" ? "상대값" : "수신 중";
+    els.orientation.textContent = "수신 중";
+  } else {
+    els.heading.textContent = "—°";
+    els.headingMeta.textContent = "절대 방위 미지원 · 상대값은 CSV에만 기록";
+    els.orientation.textContent = "상대값";
   }
   if (!state.recording) return;
   state.samples.orientation.push({
     t_session_ms: sessionTime(), timestamp_utc: isoNow(), heading_deg: round(heading, 2), source,
-    is_absolute: Boolean(event.absolute || source === "webkitCompassHeading"), alpha_deg: round(alpha, 2),
+    is_absolute: isAbsolute, alpha_deg: round(alpha, 2),
     beta_deg: round(Number(event.beta), 2), gamma_deg: round(Number(event.gamma), 2), screen_rotation_deg: Number(screenAngle || 0), quality
   });
 }
@@ -341,4 +352,4 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=2", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=3", { updateViaCache: "none" }));
