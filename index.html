@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Capture Log" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Capture Log</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <video id="preview" class="preview" playsinline muted aria-label="카메라 미리보기"></video>
+      <div class="vignette" aria-hidden="true"></div>
+
+      <header class="top-bar">
+        <div>
+          <p class="eyebrow">SENSOR CAPTURE</p>
+          <p id="capture-status" class="status">준비 중</p>
+        </div>
+        <button id="flip-camera" class="icon-button" type="button" aria-label="전면 또는 후면 카메라 전환">↻</button>
+      </header>
+
+      <section class="readout" aria-live="polite">
+        <p class="readout-label">TRUE HEADING</p>
+        <p id="heading" class="heading">—°</p>
+        <p id="heading-meta" class="heading-meta">센서 권한을 허용하면 표시됩니다</p>
+      </section>
+
+      <section class="telemetry" aria-label="실시간 센서 상태">
+        <div><span>GPS</span><strong id="gps-readout">대기</strong></div>
+        <div><span>ORIENT.</span><strong id="orientation-readout">대기</strong></div>
+        <div><span>MOTION</span><strong id="motion-readout">대기</strong></div>
+      </section>
+
+      <section id="permission-panel" class="permission-panel">
+        <h1>영상과 센서를 함께 기록</h1>
+        <p>카메라, 위치, 동작 및 방향 권한을 허용하세요. 데이터는 이 기기에만 저장됩니다.</p>
+        <button id="enable-button" class="primary-button" type="button">카메라 및 센서 활성화</button>
+        <p id="compatibility" class="compatibility"></p>
+      </section>
+
+      <section class="controls" aria-label="녹화 제어">
+        <button id="export-button" class="secondary-button" type="button" disabled>데이터 다운로드</button>
+        <button id="record-button" class="record-button" type="button" disabled aria-label="녹화 시작">
+          <span id="record-indicator"></span>
+        </button>
+        <output id="timer" class="timer">00:00</output>
+      </section>
+
+      <section id="notice" class="notice" hidden></section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

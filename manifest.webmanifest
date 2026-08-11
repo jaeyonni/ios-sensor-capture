@@ -1,0 +1,9 @@
+{
+  "name": "Capture Log",
+  "short_name": "Capture Log",
+  "description": "Video, location, and orientation logger for mobile browsers.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
