@@ -17,6 +17,18 @@ const round = (value, digits = 4) => Number.isFinite(value) ? Number(value.toFix
 const sessionTime = () => state.session ? round(performance.now() - state.session.startedPerf, 3) : "";
 const isoNow = () => new Date().toISOString();
 
+function tiltCompensatedHeading(alpha, beta, gamma) {
+  if (![alpha, beta, gamma].every(Number.isFinite)) return null;
+  if (Math.abs(beta) < 0.001 && Math.abs(gamma) < 0.001) return normalizeDegrees(360 - alpha);
+  const radians = Math.PI / 180;
+  const x = beta * radians;
+  const y = gamma * radians;
+  const z = alpha * radians;
+  const vx = -Math.cos(z) * Math.sin(y) - Math.sin(z) * Math.sin(x) * Math.cos(y);
+  const vy = -Math.sin(z) * Math.sin(y) + Math.cos(z) * Math.sin(x) * Math.cos(y);
+  return normalizeDegrees(Math.atan2(vx, vy) / radians);
+}
+
 function showNotice(message, timeout = 5000) {
   els.notice.textContent = message;
   els.notice.hidden = false;
@@ -79,10 +91,11 @@ function onOrientation(event) {
   // Android absolute alpha is already world-referenced. Adding the screen angle here
   // incorrectly makes portrait/landscape starts look like 0° or 90°.
   const heading = hasAppleCompass ? normalizeDegrees(appleHeading)
-    : isAbsolute && Number.isFinite(alpha) ? normalizeDegrees(360 - alpha) : null;
+    : isAbsolute ? tiltCompensatedHeading(alpha, Number(event.beta), Number(event.gamma)) : null;
   const source = hasAppleCompass ? "webkitCompassHeading"
     : isAbsolute ? "deviceorientationabsolute" : "deviceorientation-relative";
   const quality = isAbsolute ? "best-effort-absolute" : "relative-warning";
+  const headingFormula = hasAppleCompass ? "webkitCompassHeading" : isAbsolute ? "w3c-tilt-compensated" : "not-calculated";
 
   if (heading !== null) {
     state.latestHeading = { heading, source, quality };
@@ -96,7 +109,7 @@ function onOrientation(event) {
   }
   if (!state.recording) return;
   state.samples.orientation.push({
-    t_session_ms: sessionTime(), timestamp_utc: isoNow(), heading_deg: round(heading, 2), source,
+    t_session_ms: sessionTime(), timestamp_utc: isoNow(), heading_deg: round(heading, 2), source, heading_formula: headingFormula, event_type: event.type,
     is_absolute: isAbsolute, alpha_deg: round(alpha, 2),
     beta_deg: round(Number(event.beta), 2), gamma_deg: round(Number(event.gamma), 2), screen_rotation_deg: Number(screenAngle || 0), quality
   });
@@ -200,7 +213,7 @@ function stopRecording() {
 }
 
 const csvColumns = {
-  orientation: ["t_session_ms", "timestamp_utc", "heading_deg", "source", "is_absolute", "alpha_deg", "beta_deg", "gamma_deg", "screen_rotation_deg", "quality"],
+  orientation: ["t_session_ms", "timestamp_utc", "heading_deg", "source", "heading_formula", "event_type", "is_absolute", "alpha_deg", "beta_deg", "gamma_deg", "screen_rotation_deg", "quality"],
   motion: ["t_session_ms", "timestamp_utc", "acceleration_x_ms2", "acceleration_y_ms2", "acceleration_z_ms2", "gravity_x_ms2", "gravity_y_ms2", "gravity_z_ms2", "rotation_alpha_dps", "rotation_beta_dps", "rotation_gamma_dps", "interval_ms"],
   location: ["t_session_ms", "timestamp_utc", "latitude", "longitude", "altitude_m", "horizontal_accuracy_m", "altitude_accuracy_m", "speed_mps", "course_deg"]
 };
@@ -352,4 +365,4 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=3", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=4", { updateViaCache: "none" }));
