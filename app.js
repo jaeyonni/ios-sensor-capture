@@ -112,8 +112,9 @@ function startLocation() {
     const { coords } = position;
     els.gps.textContent = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
     if (!state.recording) return;
+    const positionTime = Number(position.timestamp);
     state.samples.location.push({
-      t_session_ms: sessionTime(), timestamp_utc: new Date(position.timestamp).toISOString(), latitude: round(coords.latitude, 7), longitude: round(coords.longitude, 7),
+      t_session_ms: sessionTime(), timestamp_utc: Number.isFinite(positionTime) && positionTime > 0 ? new Date(positionTime).toISOString() : isoNow(), latitude: round(coords.latitude, 7), longitude: round(coords.longitude, 7),
       altitude_m: round(coords.altitude, 2), horizontal_accuracy_m: round(coords.accuracy, 2), altitude_accuracy_m: round(coords.altitudeAccuracy, 2),
       speed_mps: round(coords.speed, 3), course_deg: round(coords.heading, 2)
     });
@@ -187,9 +188,14 @@ function stopRecording() {
   showNotice("영상 파일을 마무리하는 중입니다. 잠시 기다려 주세요.", 7000);
 }
 
-function toCsv(rows) {
-  if (!rows.length) return "";
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+const csvColumns = {
+  orientation: ["t_session_ms", "timestamp_utc", "heading_deg", "source", "is_absolute", "alpha_deg", "beta_deg", "gamma_deg", "screen_rotation_deg", "quality"],
+  motion: ["t_session_ms", "timestamp_utc", "acceleration_x_ms2", "acceleration_y_ms2", "acceleration_z_ms2", "gravity_x_ms2", "gravity_y_ms2", "gravity_z_ms2", "rotation_alpha_dps", "rotation_beta_dps", "rotation_gamma_dps", "interval_ms"],
+  location: ["t_session_ms", "timestamp_utc", "latitude", "longitude", "altitude_m", "horizontal_accuracy_m", "altitude_accuracy_m", "speed_mps", "course_deg"]
+};
+
+function toCsv(rows, preferredColumns = []) {
+  const columns = preferredColumns.length ? preferredColumns : [...new Set(rows.flatMap((row) => Object.keys(row)))];
   const quote = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   return [columns.join(","), ...rows.map((row) => columns.map((column) => quote(row[column])).join(","))].join("\r\n");
 }
@@ -233,13 +239,16 @@ function crc32(bytes) {
 function zipHeader(size, nameLength, signature) {
   const header = new Uint8Array(size);
   const view = new DataView(header.buffer);
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
   view.setUint32(0, signature, true);
   view.setUint16(4, 20, true);
   if (signature === 0x04034b50) {
     view.setUint16(6, 0x0800, true);
     view.setUint16(8, 0, true);
-    view.setUint16(10, 0, true);
-    view.setUint16(11, 0, true);
+    view.setUint16(10, dosTime, true);
+    view.setUint16(12, dosDate, true);
     view.setUint32(14, 0, true);
     view.setUint32(18, 0, true);
     view.setUint32(22, 0, true);
@@ -247,6 +256,8 @@ function zipHeader(size, nameLength, signature) {
   } else {
     view.setUint16(6, 0x14, true);
     view.setUint16(8, 0x0800, true);
+    view.setUint16(12, dosTime, true);
+    view.setUint16(14, dosDate, true);
     view.setUint16(28, nameLength, true);
   }
   return header;
@@ -304,9 +315,9 @@ async function exportDataset() {
   const encoder = new TextEncoder();
   const zip = await createZip([
     { name: `${base}.${state.videoExtension}`, data: new Uint8Array(await video.arrayBuffer()) },
-    { name: `${base}_orientation.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.orientation)}`) },
-    { name: `${base}_motion.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.motion)}`) },
-    { name: `${base}_gps.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.location)}`) },
+    { name: `${base}_orientation.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.orientation, csvColumns.orientation)}`) },
+    { name: `${base}_motion.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.motion, csvColumns.motion)}`) },
+    { name: `${base}_gps.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.location, csvColumns.location)}`) },
     { name: `${base}_manifest.json`, data: encoder.encode(JSON.stringify(manifest, null, 2)) }
   ]);
   downloadBlob(zip, `${base}.zip`);
