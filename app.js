@@ -179,6 +179,7 @@ function startRecording() {
   state.session = { id: `capture_${new Date().toISOString().replace(/[.:]/g, "-")}`, startedPerf: performance.now(), startedUtc: isoNow() };
   state.chunks = [];
   state.videoReady = false;
+  state.absoluteHeadingSeen = false;
   state.samples = { orientation: [], motion: [], location: [] };
   state.recorder = new MediaRecorder(state.stream, { mimeType: state.videoMime });
   state.recorder.ondataavailable = (event) => { if (event.data.size) state.chunks.push(event.data); };
@@ -340,9 +341,9 @@ async function exportDataset() {
   const manifest = {
     schema_version: "2.0.0", session: state.session, exported_utc: isoNow(), video: { filename: `${base}.${state.videoExtension}`, mime_type: state.videoMime, bytes: video.size },
     capture_csv: { filename: `${base}_data.csv`, rows: captureRows.length, columns: captureColumns },
-    samples: Object.fromEntries(Object.entries(state.samples).map(([name, rows]) => [name, rows.length])),
+    samples: { orientation: state.samples.orientation.length, motion: state.samples.motion.length, gps: state.samples.location.length },
     latest_heading: state.latestHeading,
-    notes: ["Browser sensor data is best-effort.", "heading_deg may be relative when source is alpha-derived.", "GPS course is direction of travel, not camera heading."]
+    notes: ["Browser sensor data is best-effort.", "heading_deg is blank when only relative orientation is available.", "GPS course is direction of travel, not camera heading."]
   };
   const encoder = new TextEncoder();
   const zip = await createZip([
@@ -371,4 +372,4 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=5", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=6", { updateViaCache: "none" }));
