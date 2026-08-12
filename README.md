@@ -14,8 +14,8 @@ GitHub Pages 또는 HTTPS 서버에 이 폴더를 그대로 배포하면 되는 
 
 - 후면 카메라 중심의 전체 화면 미리보기와 영상 녹화
 - iPhone Safari의 동작/방향 권한 요청 및 `webkitCompassHeading` 우선 기록
-- GPS 위치, 기기 방향, 가속도/중력/회전률을 세션 시간축으로 CSV 기록
-- 녹화 종료 뒤 영상, `orientation.csv`, `motion.csv`, `gps.csv`, `manifest.json`을 하나의 ZIP으로 다운로드
+- GPS 위치, 기기 방향, 가속도/중력/회전률을 하나의 세션 시간축 CSV로 기록
+- 녹화 종료 뒤 영상, `data.csv`, `manifest.json`을 하나의 ZIP으로 다운로드
 - 설치 가능한 PWA 기본 구성과 오프라인 앱 셸 캐시
 
 ## iPhone에서 테스트
@@ -32,11 +32,11 @@ GitHub Pages 또는 HTTPS 서버에 이 폴더를 그대로 배포하면 되는 
 ```text
 capture_YYYY-MM-DD...zip
 ├─ capture_....mp4 또는 capture_....webm
-├─ capture_...._orientation.csv
-├─ capture_...._motion.csv
-├─ capture_...._gps.csv
+├─ capture_...._data.csv
 └─ capture_...._manifest.json
 ```
+
+`data.csv`는 방위·동작·GPS를 분리 파일로 만들지 않고, 실제 측정 시각 순서대로 한 파일에 기록합니다. 각 센서의 갱신 주기가 다르므로 한 줄에 억지로 합치지 않고 `record_type`으로 행의 종류를 구분합니다. 이 방식은 원본 시각을 보존하면서 스프레드시트에서 하나의 파일만 열어 분석할 수 있습니다.
 
 ## 방위각 처리와 한계
 
@@ -63,16 +63,22 @@ capture_YYYY-MM-DD...zip
 - Android에서는 화면의 방위각 아래에 `deviceorientationabsolute · best-effort-absolute`가 표시되는지 확인합니다.
 - `course_deg`는 GPS 이동 방향이지 카메라가 보는 방향이 아닙니다.
 
-## CSV 컬럼 정의
+## 통합 CSV (`data.csv`) 컬럼 정의
 
-모든 CSV는 UTF-8(BOM) 인코딩이며, `t_session_ms`는 녹화 시작 후 경과 시간입니다. 센서·GPS를 얻지 못한 컬럼은 빈 문자열로 기록됩니다.
+CSV는 UTF-8(BOM) 인코딩입니다. `t_session_ms`는 녹화 시작 후 경과 시간이며, 모든 행은 이 값 기준 오름차순으로 정렬됩니다. 한 이벤트와 무관한 컬럼은 빈 문자열로 기록됩니다.
 
-### `orientation.csv`
+### 공통 컬럼
 
 | 컬럼 | 의미 | 단위/값 |
 | --- | --- | --- |
-| `t_session_ms` | 녹화 시작 후 방위 이벤트까지의 경과 시간 | ms |
+| `record_type` | 이 행에 기록된 이벤트 종류 | `orientation`, `motion`, `gps` |
+| `t_session_ms` | 녹화 시작 후 해당 이벤트까지의 경과 시간 | ms |
 | `timestamp_utc` | 이벤트 기록 시각 | ISO 8601 UTC |
+
+### 방위 행: `record_type=orientation`
+
+| 컬럼 | 의미 | 단위/값 |
+| --- | --- | --- |
 | `heading_deg` | 계산된 기기/카메라 방향의 수평 방위 후보 | 도, 북=0·동=90·시계 방향 |
 | `source` | 방위각 데이터 출처 | `webkitCompassHeading`, `deviceorientationabsolute`, `deviceorientation-relative` |
 | `heading_formula` | `heading_deg` 계산 방식 | `webkitCompassHeading`, `w3c-tilt-compensated`, `not-calculated` |
@@ -86,7 +92,7 @@ capture_YYYY-MM-DD...zip
 
 `heading_deg`가 빈 값이거나 `quality=relative-warning`이면 분석에서 방위각을 제외하세요.
 
-### `motion.csv`
+### 동작 행: `record_type=motion`
 
 | 컬럼 | 의미 | 단위 |
 | --- | --- | --- |
@@ -99,7 +105,7 @@ capture_YYYY-MM-DD...zip
 
 축은 기기의 표준 화면 방향을 기준으로 합니다. 기기 또는 브라우저가 특정 센서값을 제공하지 않으면 빈 값으로 남습니다.
 
-### `gps.csv`
+### GPS 행: `record_type=gps`
 
 | 컬럼 | 의미 | 단위/값 |
 | --- | --- | --- |
@@ -114,6 +120,15 @@ capture_YYYY-MM-DD...zip
 
 `horizontal_accuracy_m`가 큰 행은 위치가 흔들릴 수 있습니다. `course_deg`는 정지 상태에서는 비어 있을 수 있고, 기기 방위각과 다른 값입니다.
 
+### 행 읽기 예시
+
+```csv
+record_type,t_session_ms,timestamp_utc,heading_deg,latitude,longitude,acceleration_x_ms2
+orientation,100.2,2026-08-12T01:00:00.100Z,78.4,,, 
+motion,104.8,2026-08-12T01:00:00.105Z,,,,0.12
+gps,1220.5,2026-08-12T01:00:01.221Z,,37.56650,126.97800,
+```
+
 ### `manifest.json`
 
-세션 시작·종료 시각, 내보낸 시각, 영상 파일명·MIME 타입·파일 크기, 각 CSV의 행 수, 마지막으로 표시된 방위값과 품질, 데이터 해석 시 주의사항을 기록합니다.
+세션 시작·종료 시각, 내보낸 시각, 영상 파일명·MIME 타입·파일 크기, 통합 CSV의 파일명·컬럼·전체 행 수, 센서 종류별 행 수, 마지막으로 표시된 방위값과 품질, 데이터 해석 시 주의사항을 기록합니다.

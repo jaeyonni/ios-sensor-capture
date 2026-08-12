@@ -212,11 +212,21 @@ function stopRecording() {
   showNotice("영상 파일을 마무리하는 중입니다. 잠시 기다려 주세요.", 7000);
 }
 
-const csvColumns = {
-  orientation: ["t_session_ms", "timestamp_utc", "heading_deg", "source", "heading_formula", "event_type", "is_absolute", "alpha_deg", "beta_deg", "gamma_deg", "screen_rotation_deg", "quality"],
-  motion: ["t_session_ms", "timestamp_utc", "acceleration_x_ms2", "acceleration_y_ms2", "acceleration_z_ms2", "gravity_x_ms2", "gravity_y_ms2", "gravity_z_ms2", "rotation_alpha_dps", "rotation_beta_dps", "rotation_gamma_dps", "interval_ms"],
-  location: ["t_session_ms", "timestamp_utc", "latitude", "longitude", "altitude_m", "horizontal_accuracy_m", "altitude_accuracy_m", "speed_mps", "course_deg"]
-};
+const captureColumns = [
+  "record_type", "t_session_ms", "timestamp_utc",
+  "heading_deg", "source", "heading_formula", "event_type", "is_absolute", "alpha_deg", "beta_deg", "gamma_deg", "screen_rotation_deg", "quality",
+  "acceleration_x_ms2", "acceleration_y_ms2", "acceleration_z_ms2", "gravity_x_ms2", "gravity_y_ms2", "gravity_z_ms2", "rotation_alpha_dps", "rotation_beta_dps", "rotation_gamma_dps", "interval_ms",
+  "latitude", "longitude", "altitude_m", "horizontal_accuracy_m", "altitude_accuracy_m", "speed_mps", "course_deg"
+];
+
+function combinedCaptureRows() {
+  const typedRows = [
+    ...state.samples.orientation.map((row) => ({ record_type: "orientation", ...row })),
+    ...state.samples.motion.map((row) => ({ record_type: "motion", ...row })),
+    ...state.samples.location.map((row) => ({ record_type: "gps", ...row }))
+  ];
+  return typedRows.sort((a, b) => Number(a.t_session_ms) - Number(b.t_session_ms));
+}
 
 function toCsv(rows, preferredColumns = []) {
   const columns = preferredColumns.length ? preferredColumns : [...new Set(rows.flatMap((row) => Object.keys(row)))];
@@ -230,10 +240,6 @@ function downloadBlob(blob, filename) {
   anchor.href = url; anchor.download = filename; anchor.style.display = "none";
   document.body.append(anchor); anchor.click(); anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function downloadText(text, filename, mime = "text/csv;charset=utf-8") {
-  downloadBlob(new Blob(["\ufeff", text], { type: mime }), filename);
 }
 
 function concatBytes(parts) {
@@ -330,8 +336,10 @@ async function exportDataset() {
   }
   const base = state.session.id;
   const video = new Blob(state.chunks, { type: state.videoMime });
+  const captureRows = combinedCaptureRows();
   const manifest = {
-    schema_version: "1.0.0", session: state.session, exported_utc: isoNow(), video: { filename: `${base}.${state.videoExtension}`, mime_type: state.videoMime, bytes: video.size },
+    schema_version: "2.0.0", session: state.session, exported_utc: isoNow(), video: { filename: `${base}.${state.videoExtension}`, mime_type: state.videoMime, bytes: video.size },
+    capture_csv: { filename: `${base}_data.csv`, rows: captureRows.length, columns: captureColumns },
     samples: Object.fromEntries(Object.entries(state.samples).map(([name, rows]) => [name, rows.length])),
     latest_heading: state.latestHeading,
     notes: ["Browser sensor data is best-effort.", "heading_deg may be relative when source is alpha-derived.", "GPS course is direction of travel, not camera heading."]
@@ -339,9 +347,7 @@ async function exportDataset() {
   const encoder = new TextEncoder();
   const zip = await createZip([
     { name: `${base}.${state.videoExtension}`, data: new Uint8Array(await video.arrayBuffer()) },
-    { name: `${base}_orientation.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.orientation, csvColumns.orientation)}`) },
-    { name: `${base}_motion.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.motion, csvColumns.motion)}`) },
-    { name: `${base}_gps.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.location, csvColumns.location)}`) },
+    { name: `${base}_data.csv`, data: encoder.encode(`\ufeff${toCsv(captureRows, captureColumns)}`) },
     { name: `${base}_manifest.json`, data: encoder.encode(JSON.stringify(manifest, null, 2)) }
   ]);
   downloadBlob(zip, `${base}.zip`);
@@ -365,4 +371,4 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=4", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=5", { updateViaCache: "none" }));
