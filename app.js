@@ -8,7 +8,7 @@ const els = {
 
 const state = {
   facingMode: "environment", stream: null, recorder: null, chunks: [], videoMime: "", videoExtension: "webm",
-  locationWatch: null, session: null, recording: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
+  locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
   samples: { orientation: [], motion: [], location: [] }, listenersAdded: false
 };
 
@@ -130,8 +130,43 @@ function onMotion(event) {
   });
 }
 
+function clearRecordingTimer() {
+  if (state.timerId !== null) {
+    window.clearInterval(state.timerId);
+    state.timerId = null;
+  }
+}
+
+function resetRecordingUi(status = "녹화 준비 완료") {
+  state.recording = false;
+  clearRecordingTimer();
+  els.record.classList.remove("recording");
+  els.record.setAttribute("aria-label", "녹화 시작");
+  els.status.textContent = status;
+}
+
+function handleRecordingError(error) {
+  state.recordingError = true;
+  state.videoReady = false;
+  els.export.disabled = true;
+  resetRecordingUi("녹화 오류");
+  const detail = error?.message ? `: ${error.message}` : "";
+  showNotice(`영상 녹화 중 오류가 발생했습니다${detail}. 다시 시도해 주세요.`, 7000);
+  if (state.recorder && state.recorder.state !== "inactive") {
+    try { state.recorder.stop(); } catch { /* already stopped */ }
+  }
+}
+
+function stopLocation() {
+  if (state.locationWatch !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(state.locationWatch);
+    state.locationWatch = null;
+  }
+}
+
 function startLocation() {
   if (!navigator.geolocation) { els.gps.textContent = "미지원"; return; }
+  stopLocation();
   state.locationWatch = navigator.geolocation.watchPosition((position) => {
     const { coords } = position;
     els.gps.textContent = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
@@ -164,6 +199,9 @@ async function enableCapture() {
     els.record.disabled = false;
     showNotice("방위각은 기기 나침반의 최선 추정치입니다. 금속·자석 근처에서는 품질이 낮아질 수 있습니다.", 7000);
   } catch (error) {
+    stopLocation();
+    state.stream?.getTracks().forEach((track) => track.stop());
+    state.stream = null;
     els.enable.disabled = false;
     els.compatibility.textContent = `활성화 실패: ${error.message}`;
     els.status.textContent = "권한 필요";
@@ -178,26 +216,36 @@ function updateTimer() {
 function startRecording() {
   state.session = { id: `capture_${new Date().toISOString().replace(/[.:]/g, "-")}`, startedPerf: performance.now(), startedUtc: isoNow() };
   state.chunks = [];
+  state.recordingError = false;
   state.videoReady = false;
+  state.latestHeading = null;
   state.absoluteHeadingSeen = false;
   state.samples = { orientation: [], motion: [], location: [] };
-  state.recorder = new MediaRecorder(state.stream, { mimeType: state.videoMime });
-  state.recorder.ondataavailable = (event) => { if (event.data.size) state.chunks.push(event.data); };
-  state.recorder.onstop = () => {
-    state.videoReady = true;
-    els.status.textContent = "저장 준비 완료";
-    els.export.disabled = false;
-    showNotice(`기록 완료: 방위 ${state.samples.orientation.length}건 · 동작 ${state.samples.motion.length}건 · GPS ${state.samples.location.length}건`, 7000);
-  };
-  state.recorder.onerror = () => showNotice("영상 녹화 중 오류가 발생했습니다. 데이터를 확인하세요.");
-  state.recorder.start(1000);
-  state.recording = true;
-  els.record.classList.add("recording");
-  els.record.setAttribute("aria-label", "녹화 중지");
-  els.status.textContent = "● 녹화 중";
-  els.export.disabled = true;
-  state.timerId = window.setInterval(updateTimer, 250);
-  updateTimer();
+  try {
+    state.recorder = new MediaRecorder(state.stream, { mimeType: state.videoMime });
+    state.recorder.ondataavailable = (event) => { if (event.data.size) state.chunks.push(event.data); };
+    state.recorder.onstop = () => {
+      clearRecordingTimer();
+      if (state.recordingError) return;
+      state.videoReady = state.chunks.length > 0;
+      els.status.textContent = state.videoReady ? "저장 준비 완료" : "저장 실패";
+      els.export.disabled = !state.videoReady;
+      showNotice(state.videoReady
+        ? `기록 완료: 방위 ${state.samples.orientation.length}건 · 동작 ${state.samples.motion.length}건 · GPS ${state.samples.location.length}건`
+        : "영상 데이터가 없어 다운로드할 수 없습니다.", 7000);
+    };
+    state.recorder.onerror = (event) => handleRecordingError(event.error);
+    state.recorder.start(1000);
+    state.recording = true;
+    els.record.classList.add("recording");
+    els.record.setAttribute("aria-label", "녹화 중지");
+    els.status.textContent = "● 녹화 중";
+    els.export.disabled = true;
+    state.timerId = window.setInterval(updateTimer, 250);
+    updateTimer();
+  } catch (error) {
+    handleRecordingError(error);
+  }
 }
 
 function stopRecording() {
@@ -206,7 +254,7 @@ function stopRecording() {
   state.videoReady = false;
   state.session.endedUtc = isoNow();
   state.recorder.stop();
-  window.clearInterval(state.timerId);
+  clearRecordingTimer();
   els.record.classList.remove("recording");
   els.record.setAttribute("aria-label", "녹화 시작");
   els.status.textContent = "영상 저장 중";
@@ -376,4 +424,8 @@ const capabilities = [
   window.MediaRecorder ? "recording" : "recording ✕"
 ];
 els.compatibility.textContent = `감지됨: ${capabilities.join(" · ")}`;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=6", { updateViaCache: "none" }));
+window.addEventListener("pagehide", () => {
+  stopLocation();
+  state.stream?.getTracks().forEach((track) => track.stop());
+});
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=7", { updateViaCache: "none" }));

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Capture Log">
+  <rect width="512" height="512" rx="112" fill="#111111"/>
+  <circle cx="256" cy="256" r="155" fill="#ffffff"/>
+  <circle cx="256" cy="256" r="112" fill="#111111"/>
+  <path d="M256 144 296 256 256 368 216 256Z" fill="#ff3b30"/>
+  <circle cx="256" cy="256" r="19" fill="#ffffff"/>
+  <rect x="147" y="93" width="91" height="43" rx="21" fill="#ffffff"/>
+</svg>
