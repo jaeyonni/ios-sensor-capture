@@ -27,6 +27,12 @@ button { font: inherit; }
 .permission-panel { width: min(100%, 390px); margin: auto auto 17px; padding: 20px; border: 1px solid #ffffff5c; border-radius: 18px; background: #111c; backdrop-filter: blur(16px); text-align: center; box-shadow: 0 12px 45px #0008; }
 .permission-panel h1 { margin: 0 0 9px; font-size: 21px; }
 .permission-panel p { margin: 0 0 17px; color: #e2e3e5; font-size: 13px; line-height: 1.45; }
+.ratio-panel { margin: 0 0 17px; padding: 11px; border: 1px solid #ffffff38; border-radius: 12px; background: #0005; text-align: left; }
+.ratio-label { display: block; margin-bottom: 8px; color: #e2e3e5; font-size: 12px; font-weight: 700; }
+.ratio-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ratio-button { min-height: 34px; border: 1px solid #ffffff5c; border-radius: 8px; color: #fff; background: #ffffff12; cursor: pointer; font-size: 12px; }
+.ratio-button.selected { border-color: #fff; color: #000; background: #fff; }
+.ratio-panel small { display: block; margin-top: 8px; color: #b6bbc0; font-size: 10px; line-height: 1.35; }
 .primary-button, .secondary-button { border: 0; border-radius: 12px; min-height: 45px; font-weight: 700; cursor: pointer; }
 .primary-button { width: 100%; color: #000; background: #fff; }
 .compatibility { margin: 12px 0 0 !important; color: #b6bbc0 !important; font-size: 11px !important; }

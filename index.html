@@ -40,6 +40,15 @@
       <section id="permission-panel" class="permission-panel">
         <h1>영상과 센서를 함께 기록</h1>
         <p>카메라, 위치, 동작 및 방향 권한을 허용하세요. 데이터는 이 기기에만 저장됩니다.</p>
+        <div id="ratio-panel" class="ratio-panel" hidden>
+          <span class="ratio-label">촬영 비율</span>
+          <div class="ratio-options" role="group" aria-label="촬영 비율 선택">
+            <button class="ratio-button" type="button" data-capture-ratio="4:3">4:3</button>
+            <button class="ratio-button" type="button" data-capture-ratio="16:9">16:9</button>
+            <button class="ratio-button" type="button" data-capture-ratio="1:1">1:1</button>
+          </div>
+          <small>Apple 기기에서 카메라에 비율을 요청합니다. 실제 적용 비율은 기기에서 확인됩니다.</small>
+        </div>
         <button id="enable-button" class="primary-button" type="button">카메라 및 센서 활성화</button>
         <p id="compatibility" class="compatibility"></p>
       </section>
@@ -54,6 +63,6 @@
 
       <section id="notice" class="notice" hidden></section>
     </main>
-    <script type="module" src="./app.js?v=8"></script>
+    <script type="module" src="./app.js?v=9"></script>
   </body>
 </html>

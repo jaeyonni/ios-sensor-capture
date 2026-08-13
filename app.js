@@ -3,15 +3,18 @@ const els = {
   preview: $("preview"), status: $("capture-status"), heading: $("heading"), headingMeta: $("heading-meta"),
   gps: $("gps-readout"), orientation: $("orientation-readout"), motion: $("motion-readout"),
   panel: $("permission-panel"), enable: $("enable-button"), record: $("record-button"), export: $("export-button"),
-  timer: $("timer"), notice: $("notice"), flip: $("flip-camera"), compatibility: $("compatibility")
+  timer: $("timer"), notice: $("notice"), flip: $("flip-camera"), compatibility: $("compatibility"), ratioPanel: $("ratio-panel")
 };
 
 const state = {
   facingMode: "environment", stream: null, recorder: null, chunks: [], videoMime: "", videoExtension: "webm",
-  locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
+  captureRatio: "4:3", actualAspectRatio: null, locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
   samples: { orientation: [], motion: [], location: [] }, listenersAdded: false
 };
 
+const isAppleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const captureAspectRatios = { "4:3": 4 / 3, "16:9": 16 / 9, "1:1": 1 };
 const normalizeDegrees = (value) => ((value % 360) + 360) % 360;
 const round = (value, digits = 4) => Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 const sessionTime = () => state.session ? round(performance.now() - state.session.startedPerf, 3) : "";
@@ -63,9 +66,13 @@ async function requestMotionPermission() {
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("이 브라우저는 카메라 API를 지원하지 않습니다.");
   state.stream?.getTracks().forEach((track) => track.stop());
+  const videoConstraints = isAppleMobile
+    ? { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, aspectRatio: { ideal: captureAspectRatios[state.captureRatio] } }
+    : { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
   state.stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false
+    video: videoConstraints, audio: false
   });
+  state.actualAspectRatio = state.stream.getVideoTracks()[0]?.getSettings?.().aspectRatio ?? null;
   els.preview.srcObject = state.stream;
   await els.preview.play();
 }
@@ -79,8 +86,7 @@ function attachSensors() {
 }
 
 function onOrientation(event) {
-  const rawScreenAngle = Number(window.screen?.orientation?.angle ?? window.orientation ?? 0);
-  const screenAngle = Number.isFinite(rawScreenAngle) ? normalizeDegrees(rawScreenAngle) : 0;
+  const screenAngle = window.screen?.orientation?.angle ?? window.orientation ?? 0;
   const appleHeading = Number(event.webkitCompassHeading);
   const alpha = Number(event.alpha);
   const hasAppleCompass = Number.isFinite(appleHeading) && appleHeading >= 0;
@@ -91,15 +97,12 @@ function onOrientation(event) {
 
   // Android absolute alpha is already world-referenced. Adding the screen angle here
   // incorrectly makes portrait/landscape starts look like 0° or 90°.
-  // Safari's compass heading follows the device's current top edge. Convert it
-  // to the portrait reference so rotating the same phone to landscape does not
-  // introduce a 90-degree jump. Android absolute orientation stays unchanged.
-  const heading = hasAppleCompass ? normalizeDegrees(appleHeading - screenAngle)
+  const heading = hasAppleCompass ? normalizeDegrees(appleHeading)
     : isAbsolute ? tiltCompensatedHeading(alpha, Number(event.beta), Number(event.gamma)) : null;
   const source = hasAppleCompass ? "webkitCompassHeading"
     : isAbsolute ? "deviceorientationabsolute" : "deviceorientation-relative";
   const quality = isAbsolute ? "best-effort-absolute" : "relative-warning";
-  const headingFormula = hasAppleCompass ? "webkitCompassHeading-portrait-normalized" : isAbsolute ? "w3c-tilt-compensated" : "not-calculated";
+  const headingFormula = hasAppleCompass ? "webkitCompassHeading" : isAbsolute ? "w3c-tilt-compensated" : "not-calculated";
 
   if (heading !== null) {
     state.latestHeading = { heading, source, quality };
@@ -196,7 +199,8 @@ async function enableCapture() {
     startLocation();
     state.videoMime = selectedMime();
     state.videoExtension = state.videoMime.includes("mp4") ? "mp4" : "webm";
-    els.compatibility.textContent = `영상 형식: ${state.videoMime || "MediaRecorder 미지원"}`;
+    const actualRatio = Number.isFinite(state.actualAspectRatio) ? ` · 실제 비율 ${state.actualAspectRatio.toFixed(3)}` : "";
+    els.compatibility.textContent = `영상 형식: ${state.videoMime || "MediaRecorder 미지원"}${isAppleMobile ? ` · 요청 비율 ${state.captureRatio}${actualRatio}` : ""}`;
     if (!state.videoMime) throw new Error("이 브라우저에서는 영상 녹화를 지원하지 않습니다.");
     els.status.textContent = "녹화 준비 완료";
     els.panel.hidden = true;
@@ -390,7 +394,7 @@ async function exportDataset() {
   const base = state.session.id;
   const video = new Blob(state.chunks, { type: state.videoMime });
   const manifest = {
-    schema_version: "2.0.0", session: state.session, exported_utc: isoNow(), video: { filename: `${base}.${state.videoExtension}`, mime_type: state.videoMime, bytes: video.size },
+    schema_version: "2.0.0", session: state.session, exported_utc: isoNow(), video: { filename: `${base}.${state.videoExtension}`, mime_type: state.videoMime, bytes: video.size, ...(isAppleMobile ? { requested_aspect_ratio: state.captureRatio, actual_aspect_ratio: state.actualAspectRatio } : {}) },
     csv_files: {
       orientation: { filename: `${base}_orientation.csv`, rows: state.samples.orientation.length, columns: csvColumns.orientation },
       motion: { filename: `${base}_motion.csv`, rows: state.samples.motion.length, columns: csvColumns.motion },
@@ -414,6 +418,15 @@ async function exportDataset() {
 els.enable.addEventListener("click", enableCapture);
 els.record.addEventListener("click", () => state.recording ? stopRecording() : startRecording());
 els.export.addEventListener("click", exportDataset);
+const ratioButtons = [...document.querySelectorAll("[data-capture-ratio]")];
+if (isAppleMobile) {
+  els.ratioPanel.hidden = false;
+  ratioButtons.forEach((button) => button.addEventListener("click", () => {
+    state.captureRatio = button.dataset.captureRatio;
+    ratioButtons.forEach((item) => item.classList.toggle("selected", item === button));
+  }));
+  ratioButtons.find((button) => button.dataset.captureRatio === state.captureRatio)?.classList.add("selected");
+}
 els.flip.addEventListener("click", async () => {
   if (state.recording) return showNotice("녹화 중에는 카메라를 전환할 수 없습니다.");
   state.facingMode = state.facingMode === "environment" ? "user" : "environment";
@@ -432,4 +445,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=8", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=9", { updateViaCache: "none" }));

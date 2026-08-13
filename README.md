@@ -16,6 +16,7 @@ GitHub Pages 또는 HTTPS 서버에 이 폴더를 그대로 배포하면 되는 
 - iPhone Safari의 동작/방향 권한 요청 및 `webkitCompassHeading` 우선 기록
 - GPS 위치, 기기 방향, 가속도/중력/회전률을 센서별 CSV로 기록
 - 녹화 종료 뒤 영상, 센서별 CSV 3개, `manifest.json`을 하나의 ZIP으로 다운로드
+- Apple 모바일에서 `4:3`, `16:9`, `1:1` 촬영 비율 요청
 - 설치 가능한 PWA 기본 구성과 오프라인 앱 셸 캐시
 - GPS 감시 중복을 방지하고 페이지 종료 시 위치·카메라 자원을 정리
 - 녹화 오류 또는 영상 데이터 누락 시 잘못된 결과 ZIP 생성을 차단
@@ -47,12 +48,15 @@ capture_YYYY-MM-DD...zip
 
 `heading_deg`는 **진북 보정값이 아닌**, 브라우저가 제공하는 기기 나침반의 최선 추정치입니다. 자기편각(WMM)을 이용한 진북 보정, 원시 자력계 XYZ 값, 센서 제조사 보정 상태는 현재 순수 웹앱에서 수집하지 않습니다.
 
+### 촬영 비율
+
+Apple 모바일에서는 카메라 활성화 전에 `4:3`, `16:9`, `1:1` 비율을 선택할 수 있습니다. 이 기능은 `getUserMedia()`의 카메라 `aspectRatio` 요청만 사용하며, 캔버스 변환이나 후처리 영상 회전은 사용하지 않습니다. 브라우저와 카메라 하드웨어가 요청을 반드시 수용하는 것은 아니므로 실제 비율은 활성화 후 화면과 `manifest.json`의 `actual_aspect_ratio`에서 확인합니다. Android에서는 이 비율 요청을 추가하지 않습니다.
+
 ### iPhone Safari
 
 - iPhone은 `webkitCompassHeading`을 우선 사용합니다.
 - 이 값은 기기 나침반의 자기북 기준 방위 후보이며, iPhone에서 비교적 안정적으로 제공되는 경우가 많습니다.
-- iPhone에서는 화면 회전각을 이용해 세로모드 기준으로 환산합니다. 가로모드로 돌려도 같은 카메라 방향이면 방위각이 90도 튀지 않도록 처리합니다.
-- `heading_formula`은 `webkitCompassHeading-portrait-normalized`로 기록됩니다.
+- `heading_formula`은 `webkitCompassHeading`으로 기록됩니다.
 
 ### Android Chrome
 
@@ -81,7 +85,7 @@ CSV는 UTF-8(BOM) 인코딩입니다. `t_session_ms`는 녹화 시작 후 해당
 | `timestamp_utc` | 이벤트 기록 시각 | ISO 8601 UTC |
 | `heading_deg` | 계산된 기기/카메라 방향의 수평 방위 후보 | 도, 북=0·동=90·시계 방향 |
 | `source` | 방위각 데이터 출처 | `webkitCompassHeading`, `deviceorientationabsolute`, `deviceorientation-relative` |
-| `heading_formula` | `heading_deg` 계산 방식 | `webkitCompassHeading-portrait-normalized`, `w3c-tilt-compensated`, `not-calculated` |
+| `heading_formula` | `heading_deg` 계산 방식 | `webkitCompassHeading`, `w3c-tilt-compensated`, `not-calculated` |
 | `event_type` | 브라우저 이벤트 이름 | `deviceorientation` 또는 `deviceorientationabsolute` |
 | `is_absolute` | 브라우저가 절대 방향이라고 표시했는지 여부 | `true` / `false` |
 | `alpha_deg` | 기기 Z축 회전 | 도 |
