@@ -79,7 +79,8 @@ function attachSensors() {
 }
 
 function onOrientation(event) {
-  const screenAngle = window.screen?.orientation?.angle ?? window.orientation ?? 0;
+  const rawScreenAngle = Number(window.screen?.orientation?.angle ?? window.orientation ?? 0);
+  const screenAngle = Number.isFinite(rawScreenAngle) ? normalizeDegrees(rawScreenAngle) : 0;
   const appleHeading = Number(event.webkitCompassHeading);
   const alpha = Number(event.alpha);
   const hasAppleCompass = Number.isFinite(appleHeading) && appleHeading >= 0;
@@ -90,12 +91,15 @@ function onOrientation(event) {
 
   // Android absolute alpha is already world-referenced. Adding the screen angle here
   // incorrectly makes portrait/landscape starts look like 0° or 90°.
-  const heading = hasAppleCompass ? normalizeDegrees(appleHeading)
+  // Safari's compass heading follows the device's current top edge. Convert it
+  // to the portrait reference so rotating the same phone to landscape does not
+  // introduce a 90-degree jump. Android absolute orientation stays unchanged.
+  const heading = hasAppleCompass ? normalizeDegrees(appleHeading - screenAngle)
     : isAbsolute ? tiltCompensatedHeading(alpha, Number(event.beta), Number(event.gamma)) : null;
   const source = hasAppleCompass ? "webkitCompassHeading"
     : isAbsolute ? "deviceorientationabsolute" : "deviceorientation-relative";
   const quality = isAbsolute ? "best-effort-absolute" : "relative-warning";
-  const headingFormula = hasAppleCompass ? "webkitCompassHeading" : isAbsolute ? "w3c-tilt-compensated" : "not-calculated";
+  const headingFormula = hasAppleCompass ? "webkitCompassHeading-portrait-normalized" : isAbsolute ? "w3c-tilt-compensated" : "not-calculated";
 
   if (heading !== null) {
     state.latestHeading = { heading, source, quality };
@@ -428,4 +432,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=7", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=8", { updateViaCache: "none" }));

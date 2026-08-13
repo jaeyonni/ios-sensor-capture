@@ -51,7 +51,8 @@ capture_YYYY-MM-DD...zip
 
 - iPhone은 `webkitCompassHeading`을 우선 사용합니다.
 - 이 값은 기기 나침반의 자기북 기준 방위 후보이며, iPhone에서 비교적 안정적으로 제공되는 경우가 많습니다.
-- `heading_formula`은 `webkitCompassHeading`으로 기록됩니다.
+- iPhone에서는 화면 회전각을 이용해 세로모드 기준으로 환산합니다. 가로모드로 돌려도 같은 카메라 방향이면 방위각이 90도 튀지 않도록 처리합니다.
+- `heading_formula`은 `webkitCompassHeading-portrait-normalized`로 기록됩니다.
 
 ### Android Chrome
 
@@ -80,7 +81,7 @@ CSV는 UTF-8(BOM) 인코딩입니다. `t_session_ms`는 녹화 시작 후 해당
 | `timestamp_utc` | 이벤트 기록 시각 | ISO 8601 UTC |
 | `heading_deg` | 계산된 기기/카메라 방향의 수평 방위 후보 | 도, 북=0·동=90·시계 방향 |
 | `source` | 방위각 데이터 출처 | `webkitCompassHeading`, `deviceorientationabsolute`, `deviceorientation-relative` |
-| `heading_formula` | `heading_deg` 계산 방식 | `webkitCompassHeading`, `w3c-tilt-compensated`, `not-calculated` |
+| `heading_formula` | `heading_deg` 계산 방식 | `webkitCompassHeading-portrait-normalized`, `w3c-tilt-compensated`, `not-calculated` |
 | `event_type` | 브라우저 이벤트 이름 | `deviceorientation` 또는 `deviceorientationabsolute` |
 | `is_absolute` | 브라우저가 절대 방향이라고 표시했는지 여부 | `true` / `false` |
 | `alpha_deg` | 기기 Z축 회전 | 도 |
