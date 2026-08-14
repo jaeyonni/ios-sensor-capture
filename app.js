@@ -10,7 +10,7 @@ const els = {
 const state = {
   facingMode: "environment", stream: null, recorder: null, chunks: [], videoMime: "", videoExtension: "webm",
   captureRatio: "4:3", actualAspectRatio: null, lensMode: "wide", selectedCameraId: "", selectedCameraLabel: "", cameraDevices: [],
-  cameraSettings: {}, cameraCapabilities: {}, lensSelectionMethod: "not-requested", lensSelectionStatus: "not-requested",
+  cameraSettings: {}, cameraCapabilities: {}, lensSelectionMethod: "not-requested", lensSelectionStatus: "not-requested", lensSwitchToken: 0,
   locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
   samples: { orientation: [], motion: [], location: [] }, listenersAdded: false
 };
@@ -130,6 +130,7 @@ function lensStatusText() {
   const label = state.selectedCameraLabel || "후면 카메라";
   if (state.lensSelectionStatus === "selected-device") return `${requested.zoom}× ${label}를 장치 ID로 선택했습니다.`;
   if (state.lensSelectionStatus === "zoom-constraint-only") return "초광각 장치 ID는 없지만 브라우저 줌 제약 0.5를 적용했습니다.";
+  if (state.lensSelectionStatus === "zoom-constraint") return `${cameraLens[state.lensMode].zoom}× 브라우저 줌 제약을 적용했습니다.`;
   if (state.lensSelectionStatus === "environment-fallback") {
     return state.lensMode === "ultrawide" ? `초광각 장치가 노출되지 않아 ${label}로 대체되었습니다.` : `${label}를 사용합니다.`;
   }
@@ -137,15 +138,16 @@ function lensStatusText() {
   return "권한 허용 후 Safari가 초광각 카메라를 확인합니다.";
 }
 
-async function tryZoomFallback() {
+async function tryApplyRequestedZoom() {
   const track = currentVideoTrack();
   const zoom = state.cameraCapabilities?.zoom;
-  if (state.lensMode !== "ultrawide" || !track?.applyConstraints || !zoom
-    || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max) || zoom.min > 0.5 || zoom.max < 0.5) return false;
+  const requestedZoom = cameraLens[state.lensMode]?.zoom;
+  if (!Number.isFinite(requestedZoom) || !track?.applyConstraints || !zoom
+    || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max) || zoom.min > requestedZoom || zoom.max < requestedZoom) return false;
   try {
-    await track.applyConstraints({ zoom: { exact: 0.5 } });
+    await track.applyConstraints({ zoom: { exact: requestedZoom } });
     updateCameraTrackInfo();
-    return Number(state.cameraSettings.zoom) === 0.5;
+    return Number(state.cameraSettings.zoom) === requestedZoom;
   } catch {
     return false;
   }
@@ -181,11 +183,19 @@ async function configureAppleLens() {
 
   state.selectedCameraId = "";
   state.selectedCameraLabel = "";
+  const zoomAppliedOnCurrentTrack = await tryApplyRequestedZoom();
+  if (zoomAppliedOnCurrentTrack) {
+    state.lensSelectionMethod = "zoom-constraint";
+    state.lensSelectionStatus = state.lensMode === "ultrawide" ? "zoom-constraint-only" : "zoom-constraint";
+    els.lensStatus.textContent = lensStatusText();
+    return;
+  }
+
   await startCamera();
-  const zoomApplied = await tryZoomFallback();
+  const zoomApplied = await tryApplyRequestedZoom();
   if (zoomApplied) {
     state.lensSelectionMethod = "zoom-constraint";
-    state.lensSelectionStatus = "zoom-constraint-only";
+    state.lensSelectionStatus = state.lensMode === "ultrawide" ? "zoom-constraint-only" : "zoom-constraint";
   } else {
     state.lensSelectionMethod = "facingMode-exact";
     state.lensSelectionStatus = "environment-fallback";
@@ -428,6 +438,7 @@ function cameraMetadataRow() {
   const capabilities = state.cameraCapabilities || {};
   const resolvedLens = state.lensSelectionStatus === "selected-device" ? state.lensMode
     : state.lensSelectionStatus === "zoom-constraint-only" ? "ultrawide-zoom-constraint"
+      : state.lensSelectionStatus === "zoom-constraint" ? `${state.lensMode}-zoom-constraint`
       : state.lensSelectionStatus === "front-camera" ? "front-camera"
         : state.lensSelectionStatus === "environment-fallback" ? "environment-fallback" : "not-evaluated";
   const note = state.lensMode === "ultrawide" && state.lensSelectionStatus !== "selected-device"
@@ -591,6 +602,7 @@ if (isAppleMobile) {
   els.cameraOptions.hidden = false;
   lensButtons.forEach((button) => button.addEventListener("click", async () => {
     if (state.recording) return showNotice("녹화 중에는 카메라 렌즈를 전환할 수 없습니다.");
+    const switchToken = ++state.lensSwitchToken;
     state.lensMode = button.dataset.cameraLens;
     lensButtons.forEach((item) => item.classList.toggle("selected", item === button));
     els.lensStatus.textContent = state.stream
@@ -601,6 +613,7 @@ if (isAppleMobile) {
       state.selectedCameraId = "";
       state.selectedCameraLabel = "";
       await configureAppleLens();
+      if (switchToken !== state.lensSwitchToken) return;
       showNotice(lensStatusText(), 7000);
     } catch (error) {
       state.lensSelectionMethod = "selection-error";
@@ -635,4 +648,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=10", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=11", { updateViaCache: "none" }));
