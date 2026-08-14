@@ -423,9 +423,7 @@ const csvColumns = {
     "altitude_accuracy_m", "speed_mps", "course_deg"
   ],
   camera: [
-    "t_session_ms", "timestamp_utc", "camera_facing", "requested_lens", "requested_zoom", "resolved_lens",
-    "selected_device_label", "device_id_present", "selection_method", "selection_status", "actual_width",
-    "actual_height", "actual_aspect_ratio", "actual_zoom", "zoom_min", "zoom_max", "camera_device_count", "note"
+    "timestamp_utc", "camera_facing", "lens", "requested_zoom", "actual_zoom", "aspect_ratio", "resolution", "selection_result"
   ]
 };
 
@@ -474,6 +472,41 @@ function cameraMetadataRow() {
     zoom_max: capabilities.zoom?.max,
     camera_device_count: state.cameraDevices.length,
     note
+  };
+}
+
+function friendlyZoom(value) {
+  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(2).replace(/\.00$/, "")}×` : "미보고";
+}
+
+function friendlyAspectRatio(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "미보고";
+  const known = [[4 / 3, "4:3"], [16 / 9, "16:9"], [1, "1:1"], [3 / 4, "3:4"], [9 / 16, "9:16"]];
+  return known.find(([ratio]) => Math.abs(numeric - ratio) < 0.02)?.[1] || numeric.toFixed(3);
+}
+
+function friendlySelectionResult(status) {
+  if (status === "selected-device") return state.lensMode === "ultrawide" ? "초광각 장치 직접 선택" : "기본 카메라 장치 직접 선택";
+  if (status === "zoom-constraint-only") return "0.5배 줌 적용 (광학 초광각 보장 안 됨)";
+  if (status === "zoom-constraint") return "요청 배율 적용";
+  if (status === "environment-fallback") return state.lensMode === "ultrawide" ? "기본 후면 카메라로 대체" : "기본 후면 카메라 사용";
+  if (status === "front-camera") return "전면 카메라 사용";
+  return "확인되지 않음";
+}
+
+function cameraCsvRow() {
+  const raw = cameraMetadataRow();
+  const isFront = raw.camera_facing === "user" || state.facingMode === "user";
+  return {
+    timestamp_utc: raw.timestamp_utc,
+    camera_facing: isFront ? "전면" : "후면",
+    lens: isFront ? "전면 카메라" : state.lensMode === "ultrawide" ? "초광각" : "기본 광각",
+    requested_zoom: friendlyZoom(raw.requested_zoom),
+    actual_zoom: friendlyZoom(raw.actual_zoom),
+    aspect_ratio: friendlyAspectRatio(raw.actual_aspect_ratio),
+    resolution: raw.actual_width && raw.actual_height ? `${raw.actual_width}×${raw.actual_height}` : "미보고",
+    selection_result: friendlySelectionResult(raw.selection_status)
   };
 }
 
@@ -580,6 +613,7 @@ async function exportDataset() {
       camera: { filename: `${base}_camera.csv`, rows: 1, columns: csvColumns.camera }
     },
     camera: cameraMetadataRow(),
+    camera_summary: cameraCsvRow(),
     latest_heading: state.latestHeading,
     notes: ["Browser sensor data is best-effort.", "heading_deg is blank when only relative orientation is available.", "GPS course is direction of travel, not camera heading."]
   };
@@ -589,7 +623,7 @@ async function exportDataset() {
     { name: `${base}_orientation.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.orientation, csvColumns.orientation)}`) },
     { name: `${base}_motion.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.motion, csvColumns.motion)}`) },
     { name: `${base}_gps.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.location, csvColumns.gps)}`) },
-    { name: `${base}_camera.csv`, data: encoder.encode(`\ufeff${toCsv([cameraMetadataRow()], csvColumns.camera)}`) },
+    { name: `${base}_camera.csv`, data: encoder.encode(`\ufeff${toCsv([cameraCsvRow()], csvColumns.camera)}`) },
     { name: `${base}_manifest.json`, data: encoder.encode(JSON.stringify(manifest, null, 2)) }
   ]);
   downloadBlob(zip, `${base}.zip`);
@@ -659,4 +693,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=12", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=13", { updateViaCache: "none" }));

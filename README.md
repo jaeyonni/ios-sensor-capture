@@ -141,22 +141,16 @@ CSV는 UTF-8(BOM) 인코딩입니다. `t_session_ms`는 녹화 시작 후 해당
 
 | 컬럼 | 의미 | 단위/값 |
 | --- | --- | --- |
-| `t_session_ms` | 카메라 설정을 기록한 세션 기준 시점 | ms, 보통 0 |
 | `timestamp_utc` | 카메라 메타데이터 기록 시각 | ISO 8601 UTC |
-| `camera_facing` | 실제 카메라 트랙이 보고한 방향 | `environment`, `user` 등 |
-| `requested_lens` | 사용자가 요청한 렌즈 종류 | `wide`, `ultrawide` |
-| `requested_zoom` | 요청한 배율 표기 | `1` 또는 `0.5` |
-| `resolved_lens` | 브라우저 결과를 해석한 렌즈 상태 | `wide`, `ultrawide`, `ultrawide-zoom-constraint`, `environment-fallback`, `front-camera`, `not-evaluated` |
-| `selected_device_label` | 브라우저가 공개한 선택 장치명 | 문자열, 미공개 시 빈 값 |
-| `device_id_present` | 장치 ID를 exact 선택에 사용했는지 여부 | `true` / `false` |
-| `selection_method` | 렌즈 선택에 사용한 방법 | `deviceId-exact`, `zoom-constraint`, `facingMode-exact` 등 |
-| `selection_status` | 선택 성공 또는 대체 결과 | `selected-device`, `zoom-constraint-only`, `zoom-constraint`, `environment-fallback` 등 |
-| `actual_width`, `actual_height` | 실제 카메라 트랙 해상도 | px |
-| `actual_aspect_ratio` | 실제 카메라 트랙 화면비 | 비율 |
-| `actual_zoom` | 브라우저가 보고한 실제 줌 설정 | 배율, 미지원 시 빈 값 |
-| `zoom_min`, `zoom_max` | 브라우저가 보고한 줌 범위 | 배율 |
-| `camera_device_count` | 권한 후 확인된 비디오 입력 장치 수 | 개 |
-| `note` | 결과 해석을 위한 주의사항 | 문자열 |
+| `camera_facing` | 촬영 방향 | `전면`, `후면` |
+| `lens` | 요청한 렌즈 종류 | `기본 광각`, `초광각`, `전면 카메라` |
+| `requested_zoom` | 사용자가 요청한 배율 | `1×`, `0.5×` |
+| `actual_zoom` | 브라우저가 보고한 실제 줌값 | `1×`, `0.5×`, `미보고` |
+| `aspect_ratio` | 실제 영상 화면비 | `4:3`, `16:9`, `1:1` 등 |
+| `resolution` | 실제 카메라 트랙 해상도 | 예: `1920×1440` |
+| `selection_result` | 렌즈 선택 결과 | 사람이 읽을 수 있는 설명 |
+
+`zoom_min`, `zoom_max`, 장치명, 장치 ID 사용 여부, 선택 방식 등 상세 진단값은 CSV에서 제외하고 `manifest.json`의 `camera` 및 `camera_summary`에 보존합니다.
 
 ### CSV 읽기 예시
 
