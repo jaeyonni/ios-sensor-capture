@@ -61,7 +61,7 @@ Apple 모바일에서는 `1× 기본`과 `0.5× 초광각` 버튼을 제공합�
 
 Safari가 초광각 렌즈를 별도 장치로 공개하지 않는 기기에서는 물리 렌즈를 웹앱이 강제로 선택할 수 없습니다. 이 경우 후면 카메라를 `facingMode: { exact: "environment" }`로 요청하고, 브라우저가 0.5 줌 제약을 실제로 제공할 때만 보조적으로 적용합니다. 따라서 `camera.csv`의 `selection_status`를 반드시 확인해야 합니다.
 
-`selection_status=selected-device`이면 초광각 후보 장치가 장치 ID로 선택된 상태입니다. `zoom-constraint-only`이면 초광각 장치 ID 대신 브라우저 줌 제약 0.5만 적용된 것이므로 광학 초광각 렌즈 사용을 보장하지 않습니다. `zoom-constraint`이면 요청한 1× 또는 0.5× 줌 제약을 현재 카메라 트랙에 적용한 상태입니다. `environment-fallback`이면 요청을 적용하지 못해 후면 카메라를 다시 연 상태입니다. 브라우저는 실제 초점거리·광학 배율을 제공하지 않으므로 CSV의 `requested_lens`와 `requested_zoom`은 요청값이고, `resolved_lens`와 선택 상태를 함께 해석해야 합니다.
+`selection_status=selected-device`이면 초광각 후보 장치가 장치 ID로 선택된 상태입니다. `zoom-constraint-only`이면 초광각 장치 ID 대신 브라우저 줌 제약 0.5만 적용된 것이므로 광학 초광각 렌즈 사용을 보장하지 않습니다. `zoom-constraint`이면 요청한 1× 또는 0.5× 줌 제약을 현재 카메라 트랙에 적용한 상태입니다. 특히 0.5×에서 1×로 전환할 때는 Safari가 이전 줌 상태를 유지하지 않도록 1× 줌을 포함한 새 후면 카메라 스트림을 다시 요청합니다. `environment-fallback`이면 요청을 적용하지 못해 후면 카메라를 다시 연 상태입니다. 브라우저는 실제 초점거리·광학 배율을 제공하지 않으므로 CSV의 `requested_lens`와 `requested_zoom`은 요청값이고, `resolved_lens`와 선택 상태를 함께 해석해야 합니다.
 
 Android에서는 렌즈 선택 로직을 적용하지 않고 기존 `facingMode`, 해상도 제약과 센서 처리 경로를 유지합니다.
 

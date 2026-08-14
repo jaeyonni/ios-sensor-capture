@@ -81,21 +81,22 @@ function updateCameraTrackInfo() {
     ? state.cameraSettings.aspectRatio : null;
 }
 
-function videoConstraints() {
+function videoConstraints({ requestedZoom = null } = {}) {
   if (!isAppleMobile) {
     return { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
   }
   const base = { width: { ideal: 1920 }, aspectRatio: { ideal: captureAspectRatios[state.captureRatio] } };
+  if (Number.isFinite(requestedZoom)) base.zoom = { exact: requestedZoom };
   if (state.selectedCameraId && state.facingMode === "environment") {
     return { ...base, deviceId: { exact: state.selectedCameraId } };
   }
   return { ...base, facingMode: state.facingMode === "environment" ? { exact: "environment" } : { ideal: state.facingMode } };
 }
 
-async function startCamera() {
+async function startCamera(options = {}) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("이 브라우저는 카메라 API를 지원하지 않습니다.");
   const previousStream = state.stream;
-  const nextStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+  const nextStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(options), audio: false });
   state.stream = nextStream;
   previousStream?.getTracks().forEach((track) => track.stop());
   updateCameraTrackInfo();
@@ -169,7 +170,7 @@ async function configureAppleLens() {
   if (candidate?.deviceId) {
     state.selectedCameraId = candidate.deviceId;
     try {
-      await startCamera();
+      await startCamera({ requestedZoom: state.lensMode === "wide" ? 1 : null });
       state.selectedCameraLabel = candidate.label || "선택된 후면 카메라";
       state.lensSelectionMethod = "deviceId-exact";
       state.lensSelectionStatus = "selected-device";
@@ -183,7 +184,17 @@ async function configureAppleLens() {
 
   state.selectedCameraId = "";
   state.selectedCameraLabel = "";
-  const zoomAppliedOnCurrentTrack = await tryApplyRequestedZoom();
+  // Safari can keep a previous 0.5x state when only applyConstraints(zoom: 1)
+  // is called. For 1x, acquire a fresh environment stream with an exact zoom
+  // request before trying the current track.
+  if (state.lensMode === "wide") {
+    try {
+      await startCamera({ requestedZoom: 1 });
+    } catch {
+      await startCamera();
+    }
+  }
+  const zoomAppliedOnCurrentTrack = state.lensMode === "ultrawide" && await tryApplyRequestedZoom();
   if (zoomAppliedOnCurrentTrack) {
     state.lensSelectionMethod = "zoom-constraint";
     state.lensSelectionStatus = state.lensMode === "ultrawide" ? "zoom-constraint-only" : "zoom-constraint";
@@ -191,7 +202,7 @@ async function configureAppleLens() {
     return;
   }
 
-  await startCamera();
+  if (state.lensMode === "ultrawide") await startCamera();
   const zoomApplied = await tryApplyRequestedZoom();
   if (zoomApplied) {
     state.lensSelectionMethod = "zoom-constraint";
@@ -648,4 +659,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=11", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=12", { updateViaCache: "none" }));
