@@ -24,6 +24,8 @@ button { font: inherit; }
 .telemetry div { min-width: 0; padding: 9px 8px; border: 1px solid #ffffff48; border-radius: 10px; background: #0004; backdrop-filter: blur(8px); }
 .telemetry span { display: block; color: #d4d7da; font-size: 9px; letter-spacing: .1em; }
 .telemetry strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; font-size: 12px; font-weight: 600; }
+.camera-options { position: relative; z-index: 2; width: min(100%, 390px); margin: 20px auto 0; padding: 11px; border: 1px solid #ffffff38; border-radius: 12px; background: #0007; backdrop-filter: blur(12px); }
+.camera-options small { display: block; margin-top: 8px; color: #b6bbc0; font-size: 10px; line-height: 1.35; }
 .permission-panel { width: min(100%, 390px); margin: auto auto 17px; padding: 20px; border: 1px solid #ffffff5c; border-radius: 18px; background: #111c; backdrop-filter: blur(16px); text-align: center; box-shadow: 0 12px 45px #0008; }
 .permission-panel h1 { margin: 0 0 9px; font-size: 21px; }
 .permission-panel p { margin: 0 0 17px; color: #e2e3e5; font-size: 13px; line-height: 1.45; }

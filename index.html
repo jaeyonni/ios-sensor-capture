@@ -37,6 +37,15 @@
         <div><span>MOTION</span><strong id="motion-readout">대기</strong></div>
       </section>
 
+      <section id="camera-options" class="camera-options" hidden>
+        <span class="ratio-label">카메라 렌즈</span>
+        <div class="ratio-options" role="group" aria-label="카메라 렌즈 선택">
+          <button class="ratio-button lens-button" type="button" data-camera-lens="wide">1× 기본</button>
+          <button class="ratio-button lens-button" type="button" data-camera-lens="ultrawide">0.5× 초광각</button>
+        </div>
+        <small id="lens-status">권한 허용 후 Safari가 초광각 카메라를 확인합니다.</small>
+      </section>
+
       <section id="permission-panel" class="permission-panel">
         <h1>영상과 센서를 함께 기록</h1>
         <p>카메라, 위치, 동작 및 방향 권한을 허용하세요. 데이터는 이 기기에만 저장됩니다.</p>
@@ -63,6 +72,6 @@
 
       <section id="notice" class="notice" hidden></section>
     </main>
-    <script type="module" src="./app.js?v=9"></script>
+    <script type="module" src="./app.js?v=10"></script>
   </body>
 </html>

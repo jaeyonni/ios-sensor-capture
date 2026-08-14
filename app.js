@@ -3,18 +3,24 @@ const els = {
   preview: $("preview"), status: $("capture-status"), heading: $("heading"), headingMeta: $("heading-meta"),
   gps: $("gps-readout"), orientation: $("orientation-readout"), motion: $("motion-readout"),
   panel: $("permission-panel"), enable: $("enable-button"), record: $("record-button"), export: $("export-button"),
-  timer: $("timer"), notice: $("notice"), flip: $("flip-camera"), compatibility: $("compatibility"), ratioPanel: $("ratio-panel")
+  timer: $("timer"), notice: $("notice"), flip: $("flip-camera"), compatibility: $("compatibility"), ratioPanel: $("ratio-panel"),
+  cameraOptions: $("camera-options"), lensStatus: $("lens-status")
 };
 
 const state = {
   facingMode: "environment", stream: null, recorder: null, chunks: [], videoMime: "", videoExtension: "webm",
-  captureRatio: "4:3", actualAspectRatio: null, locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
+  captureRatio: "4:3", actualAspectRatio: null, lensMode: "wide", selectedCameraId: "", selectedCameraLabel: "", cameraDevices: [],
+  cameraSettings: {}, cameraCapabilities: {}, lensSelectionMethod: "not-requested", lensSelectionStatus: "not-requested",
+  locationWatch: null, session: null, recording: false, recordingError: false, videoReady: false, timerId: null, latestHeading: null, absoluteHeadingSeen: false,
   samples: { orientation: [], motion: [], location: [] }, listenersAdded: false
 };
 
 const isAppleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent)
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const captureAspectRatios = { "4:3": 4 / 3, "16:9": 16 / 9, "1:1": 1 };
+const cameraLens = { wide: { label: "wide", zoom: 1 }, ultrawide: { label: "ultrawide", zoom: 0.5 } };
+const ultraWideLabel = /ultra[\s-]?wide|ultrawide|0[.,]?5\s*x|0[.,]5배|초광각/i;
+const frontCameraLabel = /front|facetime|user|전면/i;
 const normalizeDegrees = (value) => ((value % 360) + 360) % 360;
 const round = (value, digits = 4) => Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 const sessionTime = () => state.session ? round(performance.now() - state.session.startedPerf, 3) : "";
@@ -63,18 +69,128 @@ async function requestMotionPermission() {
   }
 }
 
+function currentVideoTrack() {
+  return state.stream?.getVideoTracks?.()[0] ?? null;
+}
+
+function updateCameraTrackInfo() {
+  const track = currentVideoTrack();
+  state.cameraSettings = track?.getSettings?.() ?? {};
+  state.cameraCapabilities = track?.getCapabilities?.() ?? {};
+  state.actualAspectRatio = Number.isFinite(state.cameraSettings.aspectRatio)
+    ? state.cameraSettings.aspectRatio : null;
+}
+
+function videoConstraints() {
+  if (!isAppleMobile) {
+    return { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+  }
+  const base = { width: { ideal: 1920 }, aspectRatio: { ideal: captureAspectRatios[state.captureRatio] } };
+  if (state.selectedCameraId && state.facingMode === "environment") {
+    return { ...base, deviceId: { exact: state.selectedCameraId } };
+  }
+  return { ...base, facingMode: state.facingMode === "environment" ? { exact: "environment" } : { ideal: state.facingMode } };
+}
+
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("이 브라우저는 카메라 API를 지원하지 않습니다.");
-  state.stream?.getTracks().forEach((track) => track.stop());
-  const videoConstraints = isAppleMobile
-    ? { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, aspectRatio: { ideal: captureAspectRatios[state.captureRatio] } }
-    : { facingMode: { ideal: state.facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
-  state.stream = await navigator.mediaDevices.getUserMedia({
-    video: videoConstraints, audio: false
-  });
+  const previousStream = state.stream;
+  const nextStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: false });
+  state.stream = nextStream;
+  previousStream?.getTracks().forEach((track) => track.stop());
+  updateCameraTrackInfo();
   state.actualAspectRatio = state.stream.getVideoTracks()[0]?.getSettings?.().aspectRatio ?? null;
   els.preview.srcObject = state.stream;
   await els.preview.play();
+}
+
+function cameraDeviceIsRear(device) {
+  return !frontCameraLabel.test(device.label || "");
+}
+
+function cameraDeviceIsUltraWide(device) {
+  return ultraWideLabel.test(device.label || "");
+}
+
+async function enumerateCameraDevices() {
+  if (!isAppleMobile || !navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  state.cameraDevices = devices.filter((device) => device.kind === "videoinput");
+  return state.cameraDevices;
+}
+
+function lensCandidate(mode) {
+  const rear = state.cameraDevices.filter(cameraDeviceIsRear);
+  if (mode === "ultrawide") return rear.find(cameraDeviceIsUltraWide) ?? null;
+  return rear.find((device) => !cameraDeviceIsUltraWide(device)) ?? null;
+}
+
+function lensStatusText() {
+  const requested = cameraLens[state.lensMode];
+  const label = state.selectedCameraLabel || "후면 카메라";
+  if (state.lensSelectionStatus === "selected-device") return `${requested.zoom}× ${label}를 장치 ID로 선택했습니다.`;
+  if (state.lensSelectionStatus === "zoom-constraint-only") return "초광각 장치 ID는 없지만 브라우저 줌 제약 0.5를 적용했습니다.";
+  if (state.lensSelectionStatus === "environment-fallback") {
+    return state.lensMode === "ultrawide" ? `초광각 장치가 노출되지 않아 ${label}로 대체되었습니다.` : `${label}를 사용합니다.`;
+  }
+  if (state.lensSelectionStatus === "front-camera") return "전면 카메라에서는 초광각 선택을 적용하지 않습니다.";
+  return "권한 허용 후 Safari가 초광각 카메라를 확인합니다.";
+}
+
+async function tryZoomFallback() {
+  const track = currentVideoTrack();
+  const zoom = state.cameraCapabilities?.zoom;
+  if (state.lensMode !== "ultrawide" || !track?.applyConstraints || !zoom
+    || !Number.isFinite(zoom.min) || !Number.isFinite(zoom.max) || zoom.min > 0.5 || zoom.max < 0.5) return false;
+  try {
+    await track.applyConstraints({ zoom: { exact: 0.5 } });
+    updateCameraTrackInfo();
+    return Number(state.cameraSettings.zoom) === 0.5;
+  } catch {
+    return false;
+  }
+}
+
+async function configureAppleLens() {
+  if (!isAppleMobile) return;
+  if (state.facingMode !== "environment") {
+    state.selectedCameraId = "";
+    state.selectedCameraLabel = "";
+    state.lensSelectionMethod = "front-camera";
+    state.lensSelectionStatus = "front-camera";
+    els.lensStatus.textContent = lensStatusText();
+    return;
+  }
+
+  await enumerateCameraDevices();
+  const candidate = lensCandidate(state.lensMode);
+  if (candidate?.deviceId) {
+    state.selectedCameraId = candidate.deviceId;
+    try {
+      await startCamera();
+      state.selectedCameraLabel = candidate.label || "선택된 후면 카메라";
+      state.lensSelectionMethod = "deviceId-exact";
+      state.lensSelectionStatus = "selected-device";
+      els.lensStatus.textContent = lensStatusText();
+      return;
+    } catch {
+      state.selectedCameraId = "";
+      state.selectedCameraLabel = "";
+    }
+  }
+
+  state.selectedCameraId = "";
+  state.selectedCameraLabel = "";
+  await startCamera();
+  const zoomApplied = await tryZoomFallback();
+  if (zoomApplied) {
+    state.lensSelectionMethod = "zoom-constraint";
+    state.lensSelectionStatus = "zoom-constraint-only";
+  } else {
+    state.lensSelectionMethod = "facingMode-exact";
+    state.lensSelectionStatus = "environment-fallback";
+  }
+  els.lensStatus.textContent = lensStatusText();
 }
 
 function attachSensors() {
@@ -195,12 +311,14 @@ async function enableCapture() {
   try {
     await requestMotionPermission();
     await startCamera();
+    await configureAppleLens();
     attachSensors();
     startLocation();
     state.videoMime = selectedMime();
     state.videoExtension = state.videoMime.includes("mp4") ? "mp4" : "webm";
     const actualRatio = Number.isFinite(state.actualAspectRatio) ? ` · 실제 비율 ${state.actualAspectRatio.toFixed(3)}` : "";
-    els.compatibility.textContent = `영상 형식: ${state.videoMime || "MediaRecorder 미지원"}${isAppleMobile ? ` · 요청 비율 ${state.captureRatio}${actualRatio}` : ""}`;
+    const lensSummary = isAppleMobile ? ` · ${lensStatusText()}` : "";
+    els.compatibility.textContent = `영상 형식: ${state.videoMime || "MediaRecorder 미지원"}${isAppleMobile ? ` · 요청 비율 ${state.captureRatio}${actualRatio}` : ""}${lensSummary}`;
     if (!state.videoMime) throw new Error("이 브라우저에서는 영상 녹화를 지원하지 않습니다.");
     els.status.textContent = "녹화 준비 완료";
     els.panel.hidden = true;
@@ -282,6 +400,11 @@ const csvColumns = {
   gps: [
     "t_session_ms", "timestamp_utc", "latitude", "longitude", "altitude_m", "horizontal_accuracy_m",
     "altitude_accuracy_m", "speed_mps", "course_deg"
+  ],
+  camera: [
+    "t_session_ms", "timestamp_utc", "camera_facing", "requested_lens", "requested_zoom", "resolved_lens",
+    "selected_device_label", "device_id_present", "selection_method", "selection_status", "actual_width",
+    "actual_height", "actual_aspect_ratio", "actual_zoom", "zoom_min", "zoom_max", "camera_device_count", "note"
   ]
 };
 
@@ -297,6 +420,39 @@ function downloadBlob(blob, filename) {
   anchor.href = url; anchor.download = filename; anchor.style.display = "none";
   document.body.append(anchor); anchor.click(); anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function cameraMetadataRow() {
+  const requested = cameraLens[state.lensMode] || cameraLens.wide;
+  const settings = state.cameraSettings || {};
+  const capabilities = state.cameraCapabilities || {};
+  const resolvedLens = state.lensSelectionStatus === "selected-device" ? state.lensMode
+    : state.lensSelectionStatus === "zoom-constraint-only" ? "ultrawide-zoom-constraint"
+      : state.lensSelectionStatus === "front-camera" ? "front-camera"
+        : state.lensSelectionStatus === "environment-fallback" ? "environment-fallback" : "not-evaluated";
+  const note = state.lensMode === "ultrawide" && state.lensSelectionStatus !== "selected-device"
+    ? "브라우저가 초광각 물리 렌즈를 별도 장치로 노출하지 않아 실제 광학 렌즈는 보장되지 않습니다."
+    : "브라우저가 제공한 카메라 장치 및 트랙 설정 기준입니다.";
+  return {
+    t_session_ms: 0,
+    timestamp_utc: state.session?.startedUtc || isoNow(),
+    camera_facing: settings.facingMode || state.facingMode,
+    requested_lens: requested.label,
+    requested_zoom: requested.zoom,
+    resolved_lens: resolvedLens,
+    selected_device_label: state.selectedCameraLabel,
+    device_id_present: Boolean(state.selectedCameraId),
+    selection_method: state.lensSelectionMethod,
+    selection_status: state.lensSelectionStatus,
+    actual_width: settings.width,
+    actual_height: settings.height,
+    actual_aspect_ratio: settings.aspectRatio ?? state.actualAspectRatio,
+    actual_zoom: settings.zoom,
+    zoom_min: capabilities.zoom?.min,
+    zoom_max: capabilities.zoom?.max,
+    camera_device_count: state.cameraDevices.length,
+    note
+  };
 }
 
 function concatBytes(parts) {
@@ -398,8 +554,10 @@ async function exportDataset() {
     csv_files: {
       orientation: { filename: `${base}_orientation.csv`, rows: state.samples.orientation.length, columns: csvColumns.orientation },
       motion: { filename: `${base}_motion.csv`, rows: state.samples.motion.length, columns: csvColumns.motion },
-      gps: { filename: `${base}_gps.csv`, rows: state.samples.location.length, columns: csvColumns.gps }
+      gps: { filename: `${base}_gps.csv`, rows: state.samples.location.length, columns: csvColumns.gps },
+      camera: { filename: `${base}_camera.csv`, rows: 1, columns: csvColumns.camera }
     },
+    camera: cameraMetadataRow(),
     latest_heading: state.latestHeading,
     notes: ["Browser sensor data is best-effort.", "heading_deg is blank when only relative orientation is available.", "GPS course is direction of travel, not camera heading."]
   };
@@ -409,6 +567,7 @@ async function exportDataset() {
     { name: `${base}_orientation.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.orientation, csvColumns.orientation)}`) },
     { name: `${base}_motion.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.motion, csvColumns.motion)}`) },
     { name: `${base}_gps.csv`, data: encoder.encode(`\ufeff${toCsv(state.samples.location, csvColumns.gps)}`) },
+    { name: `${base}_camera.csv`, data: encoder.encode(`\ufeff${toCsv([cameraMetadataRow()], csvColumns.camera)}`) },
     { name: `${base}_manifest.json`, data: encoder.encode(JSON.stringify(manifest, null, 2)) }
   ]);
   downloadBlob(zip, `${base}.zip`);
@@ -427,10 +586,41 @@ if (isAppleMobile) {
   }));
   ratioButtons.find((button) => button.dataset.captureRatio === state.captureRatio)?.classList.add("selected");
 }
+const lensButtons = [...document.querySelectorAll("[data-camera-lens]")];
+if (isAppleMobile) {
+  els.cameraOptions.hidden = false;
+  lensButtons.forEach((button) => button.addEventListener("click", async () => {
+    if (state.recording) return showNotice("녹화 중에는 카메라 렌즈를 전환할 수 없습니다.");
+    state.lensMode = button.dataset.cameraLens;
+    lensButtons.forEach((item) => item.classList.toggle("selected", item === button));
+    els.lensStatus.textContent = state.stream
+      ? "카메라 장치를 전환하는 중입니다..."
+      : `${cameraLens[state.lensMode].zoom}× 렌즈를 선택했습니다. 활성화 시 장치 ID를 우선 강제합니다.`;
+    if (!state.stream) return;
+    try {
+      state.selectedCameraId = "";
+      state.selectedCameraLabel = "";
+      await configureAppleLens();
+      showNotice(lensStatusText(), 7000);
+    } catch (error) {
+      state.lensSelectionMethod = "selection-error";
+      state.lensSelectionStatus = "environment-fallback";
+      els.lensStatus.textContent = `렌즈 전환 실패: ${error.message}`;
+      showNotice(`렌즈 전환 실패: ${error.message}`);
+    }
+  }));
+  lensButtons.find((button) => button.dataset.cameraLens === state.lensMode)?.classList.add("selected");
+}
 els.flip.addEventListener("click", async () => {
   if (state.recording) return showNotice("녹화 중에는 카메라를 전환할 수 없습니다.");
   state.facingMode = state.facingMode === "environment" ? "user" : "environment";
-  try { await startCamera(); showNotice(state.facingMode === "environment" ? "후면 카메라" : "전면 카메라"); } catch (error) { showNotice(`카메라 전환 실패: ${error.message}`); }
+  state.selectedCameraId = "";
+  state.selectedCameraLabel = "";
+  try {
+    await startCamera();
+    await configureAppleLens();
+    showNotice(state.facingMode === "environment" ? lensStatusText() : "전면 카메라");
+  } catch (error) { showNotice(`카메라 전환 실패: ${error.message}`); }
 });
 
 const capabilities = [
@@ -445,4 +635,4 @@ window.addEventListener("pagehide", () => {
   stopLocation();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=9", { updateViaCache: "none" }));
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js?v=10", { updateViaCache: "none" }));
